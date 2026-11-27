@@ -87,11 +87,11 @@ def agent(messages):
         headers=HEADERS,
         json=payload,
         timeout=300,
-    )
+    ) #This sends info to Ollama's server for it to then send back a response
 
     response.raise_for_status()
-    data = response.json()
-    message = data ["message"]
+    data = response.json() #This converts Ollama's response into Python dictionary
+    message = data ["message"] #This specifically creates a reference to the message FROM Ollama
     return message
 
 #Where to input the instructions for the agent (after messages = content)
@@ -99,11 +99,15 @@ tool_called = True
 messages = [
    {"role": "user",
     "content": "INSERT INSTRUCTIONS HERE"}
-]
+] #Message is entered by user
+
+MAX_COUNT = 10
+current_count = 0
 
 while tool_called:
-    message = agent(messages)
-    print(message)
+    message = agent(messages) #previous message is overwritten with current message FROM Ollama
+    messages.append(message) #current Ollama message (model) is filed in the messages cabinet (added to transcript)
+    print(message) #prints current message for user's viewing
     tool_called = "tool_calls" in message
 
     #Need to distinguish what the tool_calls[0] does
@@ -150,15 +154,18 @@ while tool_called:
             "role": "tool",
             "content": f"The output of tool {function_name} is: {output}"
         }
-        messages.append(tool_message)
+        messages.append(tool_message) #code files the tool result
     
-    else:    
-        ai_message = {
-            "role": message["role"],
-            "content": message["content"]
-        }
-        messages.append(ai_message)
-    
+    # else:    
+    #     ai_message = {
+    #         "role": message["role"],
+    #         "content": message["content"]
+    #     }
+    #     messages.append(ai_message)
+    current_count = current_count + 1
+    if current_count == MAX_COUNT:
+        print("Turn limit reached")
+        break
     last_message = messages[-1]
     import pprint
     printer = pprint.pprint
