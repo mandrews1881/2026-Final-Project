@@ -1,7 +1,9 @@
 import os
+import sys
 import glob
 import subprocess
 import requests
+import pprint
 
 API_URL = "https://ollama.com/api/chat"
 HEADERS = {"Authorization": "Bearer " + os.environ["OLLAMA_API_KEY"]}
@@ -94,12 +96,26 @@ def agent(messages):
     message = data ["message"] #This specifically creates a reference to the message FROM Ollama
     return message
 
-#Where to input the instructions for the agent (after messages = content)
+#Ask the user for input
+folder_name = input("What is the case's folder name? Please ensure the folder contains a 'specs.docx' file and a folder named 'docs' which contains the case files before starting. ")
+if not os.path.isdir(folder_name):
+    sys.exit(f"Error: the folder '{folder_name}' was not found. Please try again.")
+print("Folder name " + folder_name + " found. Continuing.")
+specs_docx_path = f"{folder_name}/specs.docx"
+if not os.path.isfile(specs_docx_path):
+    sys.exit(f"Error: The named case folder does not include a specs.docx file. This is needed to check Responsiveness. If there is a specs file please make sure it is named this exactly: 'specs.docx'.")
+print("File name " + specs_docx_path + " found. Continuing.")
+docs_path = f"{folder_name}/docs"
+if not os.path.isdir(docs_path):
+    sys.exit(f"Error: The named case folder does not include a docs folder. This is needed to store the case files. If there is a folder containing the case files please make sure it is named this exactly: 'docs'.")
+print("Folder name " + docs_path + " found. Correct case folder structure confirmed.")
+
+#Where the model is instructed what to do
 tool_called = True
 messages = [
    {"role": "user",
-    "content": "INSERT INSTRUCTIONS HERE"}
-] #Message is entered by user
+    "content": f"The user has provided {folder_name} which contains {specs_docx_path} and {docs_path}. Start by reading {specs_docx_path} to determine what makes a file Responsive or Not Responsive. Next, review each file in {docs_path} and assign it a Responsive or Not Responsive label based on the contents of {specs_docx_path} and a Confidential or Not Confidential label based on the contents of the file. Each file in {docs_path} must be reviewed exactly once."}
+] #Instructions that tell the Model what to do once the user provides a case folder name
 
 MAX_COUNT = 10
 current_count = 0
@@ -164,13 +180,11 @@ while tool_called:
     #     messages.append(ai_message)
     current_count = current_count + 1
     if current_count == MAX_COUNT:
-        print("Turn limit reached")
+        print("Turn limit reached, closing loop")
         break
-    last_message = messages[-1]
-    import pprint
-    printer = pprint.pprint
-    #printer(last_message)
-
-    printer(messages)
+#last_message = messages[-1]
+#printer(last_message)
+pprint.pprint(messages)
+#printer(messages)
         
 
