@@ -161,6 +161,8 @@ messages = [
 MAX_COUNT = 10
 current_count = 0
 
+files_already_reviewed = []
+
 while tool_called:
     message = agent(messages) #previous message is overwritten with current message FROM Ollama
     messages.append(message) #current Ollama message (model) is filed in the messages cabinet (added to transcript)
@@ -194,7 +196,15 @@ while tool_called:
                 #with open(path, "r") as file:
                 #   file_content = file.read()
                 #output = file_content
-                output = read_document(path)
+                #Adding a guard in case the model calls a file to read that it has already read
+                normalized_path = os.path.abspath(path)
+                if normalized_path in files_already_reviewed:
+                    print(f"Skip duplicate call for {normalized_path}, it was already read.")
+                    output = f"{path} was already read; do not request to read it again."
+                else:
+                    print(f"Reading {normalized_path}")
+                    files_already_reviewed.append(normalized_path)
+                    output = read_document(path)
                 
             elif function_name == "write_file":
                 path = function_arguments["path"]
