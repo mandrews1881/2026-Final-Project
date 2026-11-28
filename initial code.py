@@ -3,11 +3,13 @@ import sys
 import glob
 import subprocess
 import requests
+from pypdf import PdfReader
+from docx import Document
 import pprint
 
 API_URL = "https://ollama.com/api/chat"
 HEADERS = {"Authorization": "Bearer " + os.environ["OLLAMA_API_KEY"]}
-
+#Provide tool schemas which describe the existance of each tool to the model and tell it when it would be used
 read_file_tool_schema = {
     "type": "function",
     "function": {
@@ -69,6 +71,43 @@ write_file_schema = {
     }
 }
 
+#Informs tool how to read specified file types
+def read_document(file_path):
+    lowercase_path = file_path.lower()
+    
+    if lowercase_path.endswith(".txt"):
+        with open(file_path, "r") as file:
+            file_content = file.read()
+        return file_content
+    
+    elif lowercase_path.endswith(".pdf"):
+        reader = PdfReader(file_path)
+        page_text = []
+        for page in reader.pages:
+            page_text.append(page.extract_text())
+        text = "\n".join(page_text)
+        stripped_text = text.strip()
+        if stripped_text == "":
+            return f"{file_path} has undetectable text and requires human review."     
+        else:
+            return text
+      
+    elif lowercase_path.endswith(".docx"):
+        doc = Document(file_path)
+        paragraph_text = []
+        for paragraph in doc.paragraphs:
+            paragraph_text.append(paragraph.text)
+        text = "\n".join(paragraph_text)
+        stripped_text = text.strip()
+        if stripped_text == "":
+            return f"{file_path} has undetectable text and requires human review."     
+        else:
+            return text
+
+    else:
+        return f"Unknown file type for {file_path} so it could not be read."
+
+
 def agent(messages):
     #Start by telling the agent what tools it will be using
     tools = [
@@ -101,10 +140,12 @@ folder_name = input("What is the case's folder name? Please ensure the folder co
 if not os.path.isdir(folder_name):
     sys.exit(f"Error: the folder '{folder_name}' was not found. Please try again.")
 print("Folder name " + folder_name + " found. Continuing.")
+
 specs_docx_path = f"{folder_name}/specs.docx"
 if not os.path.isfile(specs_docx_path):
     sys.exit(f"Error: The named case folder does not include a specs.docx file. This is needed to check Responsiveness. If there is a specs file please make sure it is named this exactly: 'specs.docx'.")
 print("File name " + specs_docx_path + " found. Continuing.")
+
 docs_path = f"{folder_name}/docs"
 if not os.path.isdir(docs_path):
     sys.exit(f"Error: The named case folder does not include a docs folder. This is needed to store the case files. If there is a folder containing the case files please make sure it is named this exactly: 'docs'.")
@@ -126,51 +167,55 @@ while tool_called:
     print(message) #prints current message for user's viewing
     tool_called = "tool_calls" in message
 
-    #Need to distinguish what the tool_calls[0] does
+    #If a tool is called the program must loop through each tool called. Creates a for loop for each tool_call in the tool_calls.
     if tool_called:
         print("tool called!")
         tool_calls = message["tool_calls"]
-        tool_call = tool_calls[0]
+        #tool_call = tool_calls[0]
 
-        function_name = tool_call["function"]["name"]
-        function_arguments = tool_call["function"]["arguments"]
+        for tool_call in tool_calls:
 
-        if function_name == "list_files":
-            path = "."
-            if "path" in function_arguments:
+            function_name = tool_call["function"]["name"]
+            function_arguments = tool_call["function"]["arguments"]
+
+            #Tell python what to do when the model calls each tool
+            if function_name == "list_files":
+                path = "."
+                if "path" in function_arguments:
+                    path = function_arguments["path"]
+                print(f"arguments for list_files: {path}")
+                # Preserve the below in case you need it to list out file names
+                # files = "\n" .join(os.listdir(path))
+                files = glob.glob(f"{path}/*")
+                output = files
+
+            elif function_name == "read_file":
                 path = function_arguments["path"]
-            print(f"arguments for list_files: {path}")
-            # Preserve the below in case you need it to list out file names
-            # files = "\n" .join(os.listdir(path))
-            files = glob.glob(f"{path}/*")
-            output = files
+                #with open(path, "r") as file:
+                #   file_content = file.read()
+                #output = file_content
+                output = read_document(path)
+                
+            elif function_name == "write_file":
+                path = function_arguments["path"]
+                content = function_arguments["content"]
+                with open(path, "w") as file:
+                    file.write(content)
+                output = f"File written to {path} with content: {content}"
 
-        elif function_name == "read_file":
-            path = function_arguments["path"]
-            with open(path, "r") as file:
-                file_content = file.read()
-            output = file_content
+            elif function_name == "run_python_file":
+                path = function_arguments["path"]
+                result = subprocess.run(["python", path], capture_output = True, text=True)
+                output = f"The output of python {path} is: {result.stdout}"
 
-        elif function_name == "write_file":
-            path = function_arguments["path"]
-            content = function_arguments["content"]
-            with open(path, "w") as file:
-                file.write(content)
-            output = f"File written to {path} with content: {content}"
-
-        elif function_name == "run_python_file":
-            path = function_arguments["path"]
-            result = subprocess.run(["python", path], capture_output = True, text=True)
-            output = f"The output of python {path} is: {result.stdout}"
-
-        else:
-            output = f"The requested tool {function_name} does not exist."
+            else:
+                output = f"The requested tool {function_name} does not exist."
         
-        tool_message = {
-            "role": "tool",
-            "content": f"The output of tool {function_name} is: {output}"
-        }
-        messages.append(tool_message) #code files the tool result
+            tool_message = {
+                "role": "tool",
+                "content": f"The output of tool {function_name} is: {output}"
+            }
+            messages.append(tool_message) #code files the tool result
     
     # else:    
     #     ai_message = {
